@@ -1,5 +1,3 @@
-// modules/spinwheel-service/models/SpinUser.js
-
 const mongoose = require("mongoose");
 
 const SpinUserSchema = new mongoose.Schema(
@@ -11,7 +9,6 @@ const SpinUserSchema = new mongoose.Schema(
     free_spin_used_today: { type: Boolean, default: false },
 
     spin_balance: { type: Number, default: 0 },
-
     coins: { type: Number, default: 0 },
 
     rewards: [
@@ -20,12 +17,11 @@ const SpinUserSchema = new mongoose.Schema(
         value: Number,
         code: String,
         claimed: { type: Boolean, default: false },
-        createdAt: { type: Date, default: Date.now },
-      },
-    ],
+        createdAt: { type: Date, default: Date.now }
+      }
+    ]
   },
   { timestamps: true }
 );
 
-// 👇 Correct model name
 module.exports = mongoose.model("SpinUser", SpinUserSchema);
