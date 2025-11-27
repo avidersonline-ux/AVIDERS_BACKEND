@@ -1,4 +1,4 @@
-// modules/spinwheel-service/models/SpinUser.js
+// modules/spinwheel-service/models/SpinUser.model.js
 
 const mongoose = require("mongoose");
 
@@ -31,3 +31,4 @@ const SpinUserSchema = new mongoose.Schema(
 );
 
 module.exports = mongoose.model("SpinUser", SpinUserSchema);
+
