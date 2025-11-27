@@ -1,12 +1,15 @@
-// modules/spinwheel-service/models/SpinHistory.js
-
 const mongoose = require("mongoose");
 
-const SpinHistorySchema = new mongoose.Schema({
-  uid: { type: String, required: true },
-  date: { type: Date, default: Date.now },
-  reward: Object,
-  amount: Number,
-});
+const SpinHistorySchema = new mongoose.Schema(
+  {
+    uid: { type: String, required: true },
+    email: { type: String },
+
+    reward: String,
+    reward_value: Number,
+    created_at: { type: Date, default: Date.now }
+  },
+  { timestamps: true }
+);
 
 module.exports = mongoose.model("SpinHistory", SpinHistorySchema);
