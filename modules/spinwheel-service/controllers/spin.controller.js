@@ -1,7 +1,7 @@
 // modules/spinwheel-service/controllers/spin.controller.js
 
 const SpinService = require("../services/spin.service");
-const SpinUser = require("../models/spinUser.model");
+const SpinUser = require("../models/SpinUser");
 
 // -------------------------------------------------------
 // SPIN NOW
@@ -94,4 +94,5 @@ exports.addBonusSpin = async (req, res) => {
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
+
 
