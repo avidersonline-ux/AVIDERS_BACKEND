@@ -1,12 +1,16 @@
+// modules/spinwheel-service/models/Wallet.js
+
 const mongoose = require("mongoose");
 
 const WalletSchema = new mongoose.Schema({
-  userUid: String,
-  userEmail: String,
-  type: String,
-  amount: Number,
+  uid: { type: String, required: true },
+  email: { type: String },
+
+  amount: { type: Number, default: 0 },
+  type: { type: String }, // "credit", "debit"
   description: String,
-  createdAt: { type: Date, default: Date.now }
+
+  createdAt: { type: Date, default: Date.now },
 });
 
-module.exports = mongoose.model("WalletLedger", WalletSchema);
+module.exports = mongoose.model("Wallet", WalletSchema);
