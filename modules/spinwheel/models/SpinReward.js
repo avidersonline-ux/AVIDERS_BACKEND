@@ -1,9 +1,14 @@
 const mongoose = require("mongoose");
 
-const SpinRewardSchema = new mongoose.Schema({
-  label: { type: String, required: true },
-  value: { type: Number, required: true },
-  chance: { type: Number, required: true },
-});
+const SpinUser = new mongoose.Schema(
+  {
+    userId: { type: String, required: true, unique: true },
 
-module.exports = mongoose.model("SpinReward", SpinRewardSchema);
+    lastSpinDate: Date,
+    bonusSpins: { type: Number, default: 0 },
+    walletCoins: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model("SpinUser", SpinUser);
