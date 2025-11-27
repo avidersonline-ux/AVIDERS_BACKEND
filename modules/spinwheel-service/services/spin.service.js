@@ -1,6 +1,6 @@
 // modules/spinwheel-service/services/spin.service.js
 
-const SpinUser = require("../models/SpinUser");
+const SpinUser = require("../models/spinUser.model");
 const SpinHistory = require("../models/SpinHistory");
 const Spin = require("../models/Spin");
 
@@ -63,3 +63,4 @@ class SpinService {
 }
 
 module.exports = new SpinService();
+
