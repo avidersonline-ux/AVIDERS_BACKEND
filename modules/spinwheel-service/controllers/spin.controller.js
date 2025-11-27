@@ -2,6 +2,8 @@
 
 const SpinService = require("../services/spin.service");
 const SpinUser = require("../models/SpinUser");
+const SpinHistory = require("../models/SpinHistory");
+const rewardsConfig = require("../config/rewards.config.json");
 
 // -------------------------------------------------------
 // SPIN NOW
@@ -95,4 +97,46 @@ exports.addBonusSpin = async (req, res) => {
   }
 };
 
+// -------------------------------------------------------
+// GET USER SPIN HISTORY
+// -------------------------------------------------------
+exports.getHistory = async (req, res) => {
+  try {
+    const uid = req.user?.uid || req.query.uid || req.body.uid;
 
+    if (!uid) {
+      return res.status(400).json({
+        success: false,
+        message: "UID is required"
+      });
+    }
+
+    const history = await SpinHistory.find({ uid }).sort({ created_at: -1 });
+
+    return res.json({
+      success: true,
+      total: history.length,
+      history
+    });
+
+  } catch (err) {
+    console.error("HISTORY ERROR:", err);
+    return res.status(500).json({ success: false, message: "History fetch failed" });
+  }
+};
+
+// -------------------------------------------------------
+// GET AVAILABLE REWARDS (from rewards.config.json)
+// -------------------------------------------------------
+exports.getRewards = async (req, res) => {
+  try {
+    return res.json({
+      success: true,
+      rewards: rewardsConfig.rewards
+    });
+
+  } catch (err) {
+    console.error("REWARDS ERROR:", err);
+    return res.status(500).json({ success: false, message: "Rewards fetch failed" });
+  }
+};
