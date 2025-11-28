@@ -3,23 +3,26 @@ const path = require("path");
 
 function loadConfig() {
   const filePath = path.join(__dirname, "../config/rewards.config.json");
-  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  const raw = fs.readFileSync(filePath, "utf8");
+  return JSON.parse(raw);
 }
 
 function pickReward() {
-  const { rewards } = loadConfig();
+  const config = loadConfig();
+  const sectors = config.sectors;
 
-  const totalProb = rewards.reduce((sum, r) => sum + r.probability, 0);
-  const rand = Math.random() * totalProb;
+  const total = sectors.reduce((sum, s) => sum + (s.probability || 0), 0);
+  const rand = Math.random() * total;
 
   let acc = 0;
-  for (let i = 0; i < rewards.length; i++) {
-    acc += rewards[i].probability;
+  for (let i = 0; i < sectors.length; i++) {
+    acc += sectors[i].probability;
     if (rand <= acc) {
-      return { index: i, reward: rewards[i] };
+      return { sectorIndex: i, reward: sectors[i] };
     }
   }
-  return { index: 0, reward: rewards[0] };
+
+  return { sectorIndex: 0, reward: sectors[0] };
 }
 
 module.exports = { pickReward, loadConfig };
