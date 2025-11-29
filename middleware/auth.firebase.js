@@ -1,28 +1,54 @@
-// middleware/auth.firebase.js
+const admin = require("firebase-admin");
 
-const admin = require("../config/firebase");
+// Initialize Firebase Admin if not already done
+if (!admin.apps.length) {
+  const serviceAccount = require("./firebaseAuth.json");
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+  });
+}
 
-module.exports = async function verifyFirebaseToken(req, res, next) {
+const authenticateFirebase = async (req, res, next) => {
   try {
-    const header = req.headers.authorization;
-
-    if (!header || !header.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "No token provided" });
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        success: false,
+        message: "No authorization token provided"
+      });
     }
 
-    const token = header.split(" ")[1];
+    const token = authHeader.split("Bearer ")[1];
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid authorization format"
+      });
+    }
 
-    const decoded = await admin.auth().verifyIdToken(token);
-
-    req.user = {
-      uid: decoded.uid,
-      email: decoded.email || null,
-      phone: decoded.phone_number || null,
-    };
+    // Verify Firebase token
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.user = decodedToken;
+    
+    // Ensure UID matches
+    if (req.body.uid && req.body.uid !== decodedToken.uid) {
+      return res.status(403).json({
+        success: false,
+        message: "UID mismatch"
+      });
+    }
 
     next();
-  } catch (err) {
-    console.error("Firebase Auth Error:", err);
-    return res.status(401).json({ message: "Invalid Token" });
+  } catch (error) {
+    console.error("❌ Firebase auth error:", error);
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token",
+      error: error.message
+    });
   }
 };
+
+module.exports = authenticateFirebase;
