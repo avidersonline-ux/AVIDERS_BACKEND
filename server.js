@@ -13,18 +13,25 @@ app.use(cors({
 
 app.use(express.json());
 
-// MongoDB Connection - Updated for current MongoDB driver
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://your-username:your-password@cluster0.xxxxx.mongodb.net/aviders_spin?retryWrites=true&w=majority";
+// MongoDB Connection - Use ONLY environment variable
+const MONGODB_URI = process.env.MONGODB_URI;
 
-mongoose.connect(MONGODB_URI)
-.then(() => {
-  console.log("✅ MongoDB Connected - Data will be saved permanently");
-  console.log(`📊 Database: ${mongoose.connection.db.databaseName}`);
-})
-.catch(err => {
-  console.error("❌ MongoDB connection failed:", err.message);
-  console.log("🔄 Using in-memory storage as fallback");
-});
+if (!MONGODB_URI) {
+  console.error("❌ MONGODB_URI environment variable is not set");
+  console.log("🔄 Using in-memory storage only - data will not persist");
+} else {
+  console.log("🔗 Attempting MongoDB connection...");
+  mongoose.connect(MONGODB_URI)
+  .then(() => {
+    console.log("✅ MongoDB Connected - Data will be saved permanently");
+    console.log(`📊 Database: ${mongoose.connection.db.databaseName}`);
+    console.log(`🏷️ Cluster: AVIDERS-SPIN-WIN`);
+  })
+  .catch(err => {
+    console.error("❌ MongoDB connection failed:", err.message);
+    console.log("🔄 Using in-memory storage as fallback");
+  });
+}
 
 // MongoDB Schemas
 const userSchema = new mongoose.Schema({
@@ -326,4 +333,6 @@ app.listen(PORT, () => {
   // Better connection status check
   const dbStatus = mongoose.connection.readyState === 1 ? "Connected" : "Disconnected";
   console.log(`💾 MongoDB: ${dbStatus}`);
+  console.log(`🏷️ Cluster: AVIDERS-SPIN-WIN`);
+  console.log(`🗃️ Database: spinwheelDb`);
 });
