@@ -3,8 +3,13 @@ const cors = require("cors");
 
 const app = express();
 
-// Basic CORS
-app.use(cors());
+// Enhanced CORS configuration
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: false
+}));
+
 app.use(express.json());
 
 // Request logging
@@ -17,12 +22,12 @@ app.use((req, res, next) => {
 app.get("/health", (req, res) => {
   res.json({ 
     success: true, 
-    message: "Server is running in emergency mode", 
+    message: "Server is running", 
     timestamp: new Date().toISOString()
   });
 });
 
-// Simple in-memory storage (replace with MongoDB later)
+// Simple in-memory storage
 const users = new Map();
 
 const ensureUser = (uid) => {
@@ -56,13 +61,13 @@ app.post("/api/spin/status", (req, res) => {
       bonus_spins: user.bonusSpins,
       wallet_coins: user.walletCoins,
       rewards: [
-        { type: "coins", value: 10, label: "10 Coins" },
-        { type: "coins", value: 20, label: "20 Coins" },
-        { type: "coins", value: 5, label: "5 Coins" },
+        { type: "coins", value: 100, label: "100 AVIDERS" },
+        { type: "coins", value: 200, label: "200 AVIDERS" },
+        { type: "coins", value: 50, label: "50 AVIDERS" },
         { type: "none", value: 0, label: "Try Again" },
-        { type: "coins", value: 15, label: "15 Coins" },
-        { type: "coupon", code: "SPIN10", label: "Discount Coupon" },
-        { type: "coins", value: 25, label: "25 Coins" },
+        { type: "coins", value: 150, label: "150 AVIDERS" },
+        { type: "coupon", code: "AVIDERS100", label: "Premium Coupon" },
+        { type: "coins", value: 300, label: "300 AVIDERS" },
         { type: "none", value: 0, label: "Better Luck" }
       ]
     });
@@ -125,15 +130,15 @@ app.post("/api/spin/spin", (req, res) => {
 
     user.lastSpin = new Date();
 
-    // Generate reward
+    // Generate reward - Premium AVIDERS amounts
     const rewards = [
-      { type: "coins", value: 10, label: "10 Coins", sector: 0 },
-      { type: "coins", value: 20, label: "20 Coins", sector: 1 },
-      { type: "coins", value: 5, label: "5 Coins", sector: 2 },
+      { type: "coins", value: 100, label: "100 AVIDERS", sector: 0 },
+      { type: "coins", value: 200, label: "200 AVIDERS", sector: 1 },
+      { type: "coins", value: 50, label: "50 AVIDERS", sector: 2 },
       { type: "none", value: 0, label: "Try Again", sector: 3 },
-      { type: "coins", value: 15, label: "15 Coins", sector: 4 },
-      { type: "coupon", code: "SPIN" + Math.random().toString(36).substring(2, 6).toUpperCase(), label: "Discount Coupon", sector: 5 },
-      { type: "coins", value: 25, label: "25 Coins", sector: 6 },
+      { type: "coins", value: 150, label: "150 AVIDERS", sector: 4 },
+      { type: "coupon", code: "AVD" + Math.random().toString(36).substring(2, 6).toUpperCase(), label: "Premium Coupon", sector: 5 },
+      { type: "coins", value: 300, label: "300 AVIDERS", sector: 6 },
       { type: "none", value: 0, label: "Better Luck", sector: 7 }
     ];
     
@@ -145,7 +150,7 @@ app.post("/api/spin/spin", (req, res) => {
       user.walletCoins += reward.value;
     }
 
-    console.log(`✅ Spin completed for ${uid}. Reward: ${reward.label}, Coins: ${user.walletCoins}, Free Spins: ${user.freeSpins}, Bonus Spins: ${user.bonusSpins}`);
+    console.log(`✅ Spin completed for ${uid}. Reward: ${reward.label}, AVIDERS: ${user.walletCoins}`);
     
     res.json({
       success: true,
@@ -165,7 +170,6 @@ app.post("/api/spin/spin", (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT} (Emergency Mode)`);
-  console.log(`✅ No MongoDB required - using in-memory storage`);
-  console.log(`✅ Health check: http://localhost:${PORT}/health`);
+  console.log(`🚀 Premium Spin Wheel Server running on port ${PORT}`);
+  console.log(`✅ CORS enabled for all origins`);
 });
