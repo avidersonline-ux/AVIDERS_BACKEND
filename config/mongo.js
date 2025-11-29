@@ -1,14 +1,55 @@
 const mongoose = require('mongoose');
 
+let isConnected = false;
+let connectionAttempts = 0;
+
 const connectMongo = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/main');
-    console.log(`✅ Main MongoDB Connected: ${conn.connection.host}`);
+    const mongoUri = process.env.MONGODB_URI;
+    
+    if (!mongoUri) {
+      console.log('⚠️  MONGODB_URI not set, using fallback mode');
+      return;
+    }
+
+    console.log('🔗 Attempting MongoDB connection...');
+    connectionAttempts++;
+    
+    const conn = await mongoose.connect(mongoUri, {
+      serverSelectionTimeoutMS: 10000, // 10 seconds
+      socketTimeoutMS: 45000,
+      maxPoolSize: 10,
+      retryWrites: true,
+      w: 'majority'
+    });
+    
+    isConnected = true;
+    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
+    console.log(`📊 Database: ${conn.connection.name}`);
+    
+    // Connection event handlers
+    mongoose.connection.on('error', (err) => {
+      console.error('❌ MongoDB connection error:', err);
+      isConnected = false;
+    });
+    
+    mongoose.connection.on('disconnected', () => {
+      console.log('🔌 MongoDB disconnected');
+      isConnected = false;
+    });
+    
+    mongoose.connection.on('reconnected', () => {
+      console.log('🔁 MongoDB reconnected');
+      isConnected = true;
+    });
+    
   } catch (error) {
-    console.error('❌ Main MongoDB connection error:', error.message);
-    // Don't exit the process, let the server continue running
-    console.log('🔄 Server will continue without MongoDB connection');
+    console.error('❌ MongoDB connection failed:', error.message);
+    console.log('🔄 Server will run in fallback mode without database');
+    isConnected = false;
   }
 };
 
+// Export connection status check
 module.exports = connectMongo;
+module.exports.isConnected = () => isConnected;
