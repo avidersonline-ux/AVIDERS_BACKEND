@@ -17,9 +17,16 @@ const spinUserSchema = new mongoose.Schema({
   last_free_spin: {
     type: Date,
     default: null
+  },
+  created_at: {
+    type: Date,
+    default: Date.now
+  },
+  updated_at: {
+    type: Date,
+    default: Date.now
   }
-}, {
-  timestamps: true
 });
 
-module.exports = mongoose.model("SpinUser", spinUserSchema);
+// Use main mongoose connection if spin connection fails
+module.exports = mongoose.models.SpinUser || mongoose.model("SpinUser", spinUserSchema);
