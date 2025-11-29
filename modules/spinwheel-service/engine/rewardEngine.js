@@ -1,8 +1,29 @@
-const rewardsConfig = require("../rewards.config.json");
+const fs = require('fs');
+const path = require('path');
 
 class RewardEngine {
   constructor() {
-    this.rewards = rewardsConfig.rewards || this.getDefaultRewards();
+    this.rewards = this.loadRewards();
+  }
+
+  loadRewards() {
+    try {
+      const configPath = path.join(__dirname, '../rewards.config.json');
+      
+      // Check if file exists
+      if (fs.existsSync(configPath)) {
+        const config = require(configPath);
+        console.log("✅ Loaded rewards from config file");
+        return config.rewards || this.getDefaultRewards();
+      } else {
+        console.log("⚠️  rewards.config.json not found, using default rewards");
+        return this.getDefaultRewards();
+      }
+    } catch (error) {
+      console.error("❌ Error loading rewards config:", error.message);
+      console.log("🔄 Using default rewards as fallback");
+      return this.getDefaultRewards();
+    }
   }
 
   getDefaultRewards() {
