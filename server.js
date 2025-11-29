@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+
+// Production security & performance imports
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
@@ -10,16 +12,90 @@ const Joi = require('joi');
 
 const app = express();
 
-// Enhanced CORS configuration
+// =====================
+// SECURITY MIDDLEWARE
+// =====================
+
+// 1. Helmet - Security headers
+app.use(helmet());
+
+// 2. Compression - Gzip compression
+app.use(compression());
+
+// 3. CORS - Configure allowed origins
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : ['http://localhost:3000', 'http://localhost:5000']; // Add your production domains
+
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      console.log(`🚫 CORS blocked: ${origin}`);
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  methods: ['GET', 'POST'],
   credentials: false
 }));
 
 app.use(express.json());
 
-// Load rewards configuration
+// =====================
+// RATE LIMITING
+// =====================
+
+const spinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // Limit each IP to 50 spin requests per windowMs
+  message: { 
+    success: false, 
+    message: "Too many spin attempts, please try again later" 
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: { 
+    success: false, 
+    message: "Too many requests, please try again later" 
+  }
+});
+
+// Apply rate limiting
+app.use("/api/spin/spin", spinLimiter);
+app.use("/api/", apiLimiter);
+
+// =====================
+// INPUT VALIDATION
+// =====================
+
+const validateSpinRequest = (req, res, next) => {
+  const schema = Joi.object({
+    uid: Joi.string().min(5).max(100).required()
+  });
+
+  const { error } = schema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ 
+      success: false, 
+      message: error.details[0].message 
+    });
+  }
+  next();
+};
+
+// =====================
+// REWARDS CONFIGURATION
+// =====================
+
 let rewardsConfig = [];
 try {
   const configPath = path.join(__dirname, 'modules', 'spinwheel-service', 'config', 'rewards.config.json');
@@ -42,7 +118,10 @@ try {
   ];
 }
 
-// MongoDB Connection - Use MONGO_URI_SPIN environment variable
+// =====================
+// DATABASE CONNECTION
+// =====================
+
 const MONGODB_URI = process.env.MONGO_URI_SPIN || process.env.MONGO_URI;
 
 if (!MONGODB_URI) {
@@ -62,7 +141,10 @@ if (!MONGODB_URI) {
   });
 }
 
-// MongoDB Schemas
+// =====================
+// DATABASE SCHEMAS
+// =====================
+
 const userSchema = new mongoose.Schema({
   uid: { type: String, required: true, unique: true },
   freeSpins: { type: Number, default: 1 },
@@ -87,11 +169,18 @@ const spinHistorySchema = new mongoose.Schema({
 const User = mongoose.model('User', userSchema);
 const SpinHistory = mongoose.model('SpinHistory', spinHistorySchema);
 
-// Request logging
+// =====================
+// REQUEST LOGGING
+// =====================
+
 app.use((req, res, next) => {
   console.log(`📨 ${req.method} ${req.path}`, req.body || '');
   next();
 });
+
+// =====================
+// API ENDPOINTS
+// =====================
 
 // Health check with DB status
 app.get("/health", async (req, res) => {
@@ -105,6 +194,7 @@ app.get("/health", async (req, res) => {
     success: true, 
     message: "Server is running", 
     timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
     database: dbStatus,
     stats: {
       total_users: userCount,
@@ -113,6 +203,11 @@ app.get("/health", async (req, res) => {
     rewards_config: {
       loaded: rewardsConfig.length,
       rewards: rewardsConfig.map(r => ({ type: r.type, label: r.label }))
+    },
+    security: {
+      cors_enabled: true,
+      rate_limiting: true,
+      compression: true
     }
   });
 });
@@ -140,8 +235,8 @@ const ensureUser = async (uid) => {
   }
 };
 
-// SPIN API ENDPOINTS - NOW SAVING TO MONGODB
-app.post("/api/spin/status", async (req, res) => {
+// SPIN API ENDPOINTS
+app.post("/api/spin/status", validateSpinRequest, async (req, res) => {
   try {
     const { uid } = req.body;
     console.log(`🔎 STATUS requested for UID: ${uid}`);
@@ -173,7 +268,7 @@ app.post("/api/spin/status", async (req, res) => {
   }
 });
 
-app.post("/api/spin/bonus", async (req, res) => {
+app.post("/api/spin/bonus", validateSpinRequest, async (req, res) => {
   try {
     const { uid } = req.body;
     console.log(`➕ BONUS requested for UID: ${uid}`);
@@ -199,7 +294,7 @@ app.post("/api/spin/bonus", async (req, res) => {
   }
 });
 
-app.post("/api/spin/spin", async (req, res) => {
+app.post("/api/spin/spin", validateSpinRequest, async (req, res) => {
   try {
     const { uid } = req.body;
     console.log(`🎰 SPIN requested for UID: ${uid}`);
@@ -283,7 +378,7 @@ app.post("/api/spin/spin", async (req, res) => {
 });
 
 // LEDGER endpoint - Get user history from MongoDB
-app.post("/api/spin/ledger", async (req, res) => {
+app.post("/api/spin/ledger", validateSpinRequest, async (req, res) => {
   try {
     const { uid } = req.body;
     
@@ -317,7 +412,7 @@ app.post("/api/spin/ledger", async (req, res) => {
 });
 
 // RESET endpoint - Delete user data from MongoDB
-app.post("/api/spin/reset", async (req, res) => {
+app.post("/api/spin/reset", validateSpinRequest, async (req, res) => {
   try {
     const { uid } = req.body;
     
@@ -346,6 +441,12 @@ app.post("/api/spin/reset", async (req, res) => {
 // ADMIN endpoint - Get all users (for debugging)
 app.get("/api/spin/admin/users", async (req, res) => {
   try {
+    // Basic admin authentication (you should enhance this)
+    const adminKey = req.headers['x-admin-key'];
+    if (!adminKey || adminKey !== process.env.ADMIN_SECRET) {
+      return res.status(403).json({ success: false, message: "Admin access denied" });
+    }
+
     const users = await User.find().sort({ createdAt: -1 });
     const totalSpins = await SpinHistory.countDocuments();
     
@@ -361,12 +462,72 @@ app.get("/api/spin/admin/users", async (req, res) => {
   }
 });
 
+// =====================
+// ERROR HANDLING
+// =====================
+
+// 404 handler for undefined routes
+app.use('*', (req, res) => {
+  res.status(404).json({ 
+    success: false, 
+    message: "API endpoint not found",
+    path: req.originalUrl
+  });
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('🔥 Global Error Handler:', err);
+  
+  // CORS error
+  if (err.message.includes('CORS')) {
+    return res.status(403).json({ 
+      success: false, 
+      message: "CORS policy violation" 
+    });
+  }
+  
+  // Rate limit error
+  if (err.status === 429) {
+    return res.status(429).json({ 
+      success: false, 
+      message: "Too many requests, please try again later" 
+    });
+  }
+  
+  res.status(500).json({ 
+    success: false, 
+    message: process.env.NODE_ENV === 'production' ? "Internal server error" : err.message 
+  });
+});
+
+// =====================
+// PROCESS HANDLERS
+// =====================
+
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled Promise Rejection:', err);
+  // In production, you might want to restart the process
+  process.exit(1);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught Exception:', err);
+  process.exit(1);
+});
+
+// =====================
+// SERVER STARTUP
+// =====================
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Premium Spin Wheel Server running on port ${PORT}`);
-  console.log(`✅ CORS enabled for all origins`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`✅ CORS enabled for: ${allowedOrigins.join(', ')}`);
   console.log(`🎯 Rewards configuration: ${rewardsConfig.length} rewards loaded`);
+  console.log(`🛡️ Security: Helmet, Rate Limiting, Compression enabled`);
   
   // Better connection status check
   const dbStatus = mongoose.connection.readyState === 1 ? "Connected" : "Disconnected";
@@ -374,4 +535,9 @@ app.listen(PORT, () => {
   console.log(`🏷️ Cluster: AVIDERS-SPIN-WIN`);
   console.log(`🗃️ Database: spinwheelDb`);
   console.log(`🔑 Using: ${process.env.MONGO_URI_SPIN ? 'MONGO_URI_SPIN' : process.env.MONGO_URI ? 'MONGO_URI' : 'No connection string'}`);
+  
+  // Security warnings
+  if (process.env.NODE_ENV === 'production' && allowedOrigins.includes('http://localhost:3000')) {
+    console.log(`⚠️  WARNING: Localhost is in allowed origins in production`);
+  }
 });
