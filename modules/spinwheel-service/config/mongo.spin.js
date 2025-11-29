@@ -2,25 +2,20 @@ const mongoose = require('mongoose');
 
 const connectSpinMongo = async () => {
   try {
-    // Use a different database name for spin wheel
-    const spinDb = mongoose.createConnection(process.env.MONGODB_URI || 'mongodb://localhost:27017/spin_wheel', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    // For spin wheel, we can use the same connection but different database
+    const spinDbUri = process.env.MONGODB_URI ? 
+      process.env.MONGODB_URI.replace(/\/[^/?]+(\?|$)/, '/spin_wheel$1') : 
+      'mongodb://localhost:27017/spin_wheel';
     
-    spinDb.on('connected', () => {
-      console.log('✅ Spin Wheel MongoDB Connected');
-    });
+    const conn = await mongoose.createConnection(spinDbUri).asPromise();
+    console.log('✅ Spin Wheel MongoDB Connected');
     
-    spinDb.on('error', (err) => {
-      console.error('❌ Spin Wheel MongoDB connection error:', err);
-    });
-    
-    // Make spinDb available to models
-    module.exports = spinDb;
+    // Make the connection available for models
+    module.exports.spinConnection = conn;
     
   } catch (error) {
-    console.error('❌ Spin Wheel MongoDB connection failed:', error.message);
+    console.error('❌ Spin Wheel MongoDB connection error:', error.message);
+    console.log('🔄 Spin wheel will use main database connection');
   }
 };
 
