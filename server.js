@@ -1,6 +1,8 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 
@@ -12,6 +14,29 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Load rewards configuration
+let rewardsConfig = [];
+try {
+  const configPath = path.join(__dirname, 'modules', 'spinwheel-service', 'config', 'rewards.config.json');
+  const configData = fs.readFileSync(configPath, 'utf8');
+  rewardsConfig = JSON.parse(configData).rewards;
+  console.log("✅ Rewards configuration loaded successfully");
+  console.log(`📊 Loaded ${rewardsConfig.length} rewards from config`);
+} catch (error) {
+  console.error("❌ Failed to load rewards config, using fallback rewards:", error.message);
+  // Fallback rewards
+  rewardsConfig = [
+    { type: "coins", value: 10, probability: 0.3, label: "10 AVD Coins" },
+    { type: "coins", value: 20, probability: 0.2, label: "20 AVD Coins" },
+    { type: "coins", value: 5, probability: 0.4, label: "5 AVD Coins" },
+    { type: "none", value: 0, probability: 0.05, label: "Try Again" },
+    { type: "coins", value: 15, probability: 0.25, label: "15 AVD Coins" },
+    { type: "coupon", code: "SPIN10", probability: 0.1, label: "Discount Coupon" },
+    { type: "coins", value: 25, probability: 0.15, label: "25 AVD Coins" },
+    { type: "none", value: 0, probability: 0.05, label: "Better Luck" }
+  ];
+}
 
 // MongoDB Connection - Use MONGO_URI_SPIN environment variable
 const MONGODB_URI = process.env.MONGO_URI_SPIN || process.env.MONGO_URI;
@@ -80,6 +105,10 @@ app.get("/health", async (req, res) => {
     stats: {
       total_users: userCount,
       total_spins: spinCount
+    },
+    rewards_config: {
+      loaded: rewardsConfig.length,
+      rewards: rewardsConfig.map(r => ({ type: r.type, label: r.label }))
     }
   });
 });
@@ -119,21 +148,20 @@ app.post("/api/spin/status", async (req, res) => {
 
     const user = await ensureUser(uid);
     
+    // Use rewards from config (remove probability field for frontend)
+    const frontendRewards = rewardsConfig.map(reward => ({
+      type: reward.type,
+      value: reward.value,
+      label: reward.label,
+      code: reward.code
+    }));
+    
     res.json({
       success: true,
       free_spin_available: user.freeSpins > 0,
       bonus_spins: user.bonusSpins,
       wallet_coins: user.walletCoins,
-      rewards: [
-        { type: "coins", value: 100, label: "100 AVD coins" },
-        { type: "coins", value: 200, label: "200 AVD coins" },
-        { type: "coins", value: 50, label: "50 AVD coins" },
-        { type: "none", value: 0, label: "Try Again" },
-        { type: "coins", value: 150, label: "150 AVD coins" },
-        { type: "coupon", code: "AVIDERS100", label: "Premium Coupon" },
-        { type: "coins", value: 300, label: "300 AVD coins" },
-        { type: "none", value: 0, label: "Better Luck" }
-      ]
+      rewards: frontendRewards
     });
   } catch (error) {
     console.error('❌ Status error:', error);
@@ -195,20 +223,25 @@ app.post("/api/spin/spin", async (req, res) => {
 
     user.lastSpin = new Date();
 
-    // Generate reward - Premium AVIDERS amounts
-    const rewards = [
-      { type: "coins", value: 100, label: "100 AVIDERS", sector: 0 },
-      { type: "coins", value: 200, label: "200 AVIDERS", sector: 1 },
-      { type: "coins", value: 50, label: "50 AVIDERS", sector: 2 },
-      { type: "none", value: 0, label: "Try Again", sector: 3 },
-      { type: "coins", value: 150, label: "150 AVIDERS", sector: 4 },
-      { type: "coupon", code: "AVD" + Math.random().toString(36).substring(2, 6).toUpperCase(), label: "Premium Coupon", sector: 5 },
-      { type: "coins", value: 300, label: "300 AVIDERS", sector: 6 },
-      { type: "none", value: 0, label: "Better Luck", sector: 7 }
-    ];
+    // ✅ USE REWARDS FROM CONFIG FILE with probability-based selection
+    const randomValue = Math.random();
+    let cumulativeProbability = 0;
+    let selectedReward = rewardsConfig[0]; // fallback
     
-    const randomIndex = Math.floor(Math.random() * rewards.length);
-    const reward = rewards[randomIndex];
+    for (const reward of rewardsConfig) {
+      cumulativeProbability += reward.probability;
+      if (randomValue <= cumulativeProbability) {
+        selectedReward = reward;
+        break;
+      }
+    }
+
+    // Add sector index for frontend
+    const rewardIndex = rewardsConfig.findIndex(r => r === selectedReward);
+    const reward = {
+      ...selectedReward,
+      sector: rewardIndex
+    };
     
     // Update wallet if coins reward
     if (reward.type === "coins") {
@@ -228,7 +261,7 @@ app.post("/api/spin/spin", async (req, res) => {
     });
     await spinHistory.save();
 
-    console.log(`✅ Spin COMPLETED and SAVED to MongoDB for ${uid}. Reward: ${reward.label}, AVIDERS: ${user.walletCoins}`);
+    console.log(`✅ Spin COMPLETED and SAVED to MongoDB for ${uid}. Reward: ${reward.label}, AVD Coins: ${user.walletCoins}`);
     
     res.json({
       success: true,
@@ -329,6 +362,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Premium Spin Wheel Server running on port ${PORT}`);
   console.log(`✅ CORS enabled for all origins`);
+  console.log(`🎯 Rewards configuration: ${rewardsConfig.length} rewards loaded`);
   
   // Better connection status check
   const dbStatus = mongoose.connection.readyState === 1 ? "Connected" : "Disconnected";
