@@ -145,13 +145,16 @@ app.post("/api/spin/spin", async (req, res) => {
 
     // Use free spin first, then bonus spins
     let freeSpinUsed = false;
-    const updateData = { $set: { updatedAt: new Date(), lastSpin: new Date() } };
+    let updateQuery = { 
+      $set: { updatedAt: new Date(), lastSpin: new Date() },
+      $inc: {}
+    };
     
     if (user.freeSpins > 0) {
-      updateData.$inc = { freeSpins: -1 };
+      updateQuery.$inc.freeSpins = -1;
       freeSpinUsed = true;
     } else {
-      updateData.$inc = { bonusSpins: -1 };
+      updateQuery.$inc.bonusSpins = -1;
     }
 
     // Generate reward
@@ -171,16 +174,16 @@ app.post("/api/spin/spin", async (req, res) => {
     
     // Update wallet if coins reward
     if (reward.type === "coins") {
-      updateData.$inc = { ...updateData.$inc, walletCoins: reward.value };
+      updateQuery.$inc.walletCoins = reward.value;
     }
 
     const updatedUser = await User.findOneAndUpdate(
       { uid },
-      updateData,
+      updateQuery,
       { new: true }
     );
 
-    console.log(`✅ Spin completed for ${uid}. Reward: ${reward.label}, Coins: ${updatedUser.walletCoins}`);
+    console.log(`✅ Spin completed for ${uid}. Reward: ${reward.label}, Coins: ${updatedUser.walletCoins}, Free Spins: ${updatedUser.freeSpins}, Bonus Spins: ${updatedUser.bonusSpins}`);
     
     res.json({
       success: true,
@@ -193,6 +196,40 @@ app.post("/api/spin/spin", async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Spin error:', error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+});
+
+// Add a reset endpoint for testing
+app.post("/api/spin/reset", async (req, res) => {
+  try {
+    const { uid } = req.body;
+    if (!uid) {
+      return res.json({ success: false, message: "UID is required" });
+    }
+
+    const user = await User.findOneAndUpdate(
+      { uid },
+      { 
+        freeSpins: 1, 
+        bonusSpins: 0, 
+        walletCoins: 100,
+        updatedAt: new Date()
+      },
+      { new: true, upsert: true }
+    );
+
+    console.log(`🔄 User ${uid} reset. Free spins: ${user.freeSpins}, Coins: ${user.walletCoins}`);
+    
+    res.json({
+      success: true,
+      free_spin_available: user.freeSpins > 0,
+      bonus_spins: user.bonusSpins,
+      wallet_coins: user.walletCoins,
+      message: "User data reset successfully"
+    });
+  } catch (error) {
+    console.error('❌ Reset error:', error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
