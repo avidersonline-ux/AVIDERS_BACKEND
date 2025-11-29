@@ -1,12 +1,52 @@
 {
   "rewards": [
-    { "type": "coins", "value": 10, "label": "10 Coins", "probability": 30 },
-    { "type": "coins", "value": 20, "label": "20 Coins", "probability": 25 },
-    { "type": "none", "label": "Try Again", "probability": 10 },
-    { "type": "coupon", "label": "Coupon Reward", "code": "AVD10", "probability": 10 },
-    { "type": "coins", "value": 50, "label": "50 Coins", "probability": 10 },
-    { "type": "coins", "value": 100, "label": "100 Coins", "probability": 7 },
-    { "type": "coins", "value": 500, "label": "500 Coins", "probability": 3 },
-    { "type": "none", "label": "Better Luck", "probability": 5 }
+    {
+      "type": "coins",
+      "value": 10,
+      "probability": 0.3,
+      "label": "10 Coins"
+    },
+    {
+      "type": "coins", 
+      "value": 20,
+      "probability": 0.2,
+      "label": "20 Coins"
+    },
+    {
+      "type": "coins",
+      "value": 5,
+      "probability": 0.4,
+      "label": "5 Coins"
+    },
+    {
+      "type": "none",
+      "value": 0,
+      "probability": 0.05,
+      "label": "Try Again"
+    },
+    {
+      "type": "coins",
+      "value": 15,
+      "probability": 0.25,
+      "label": "15 Coins"
+    },
+    {
+      "type": "coupon",
+      "code": "SPIN10",
+      "probability": 0.1,
+      "label": "Discount Coupon"
+    },
+    {
+      "type": "coins",
+      "value": 25,
+      "probability": 0.15,
+      "label": "25 Coins"
+    },
+    {
+      "type": "none",
+      "value": 0,
+      "probability": 0.05,
+      "label": "Better Luck"
+    }
   ]
 }
