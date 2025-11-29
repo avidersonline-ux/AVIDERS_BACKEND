@@ -3,6 +3,10 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+const helmet = require('helmet');
+const Joi = require('joi');
 
 const app = express();
 
