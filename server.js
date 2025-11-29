@@ -125,9 +125,9 @@ app.post("/api/spin/status", async (req, res) => {
       bonus_spins: user.bonusSpins,
       wallet_coins: user.walletCoins,
       rewards: [
-        { type: "coins", value: 100, label: "100 AVIDERS" },
-        { type: "coins", value: 200, label: "200 AVIDERS" },
-        { type: "coins", value: 50, label: "50 AVIDERS" },
+        { type: "coins", value: 100, label: "100 AVD coins" },
+        { type: "coins", value: 200, label: "200 AVD coins" },
+        { type: "coins", value: 50, label: "50 AVD coins" },
         { type: "none", value: 0, label: "Try Again" },
         { type: "coins", value: 150, label: "150 AVIDERS" },
         { type: "coupon", code: "AVIDERS100", label: "Premium Coupon" },
