@@ -129,9 +129,9 @@ app.post("/api/spin/status", async (req, res) => {
         { type: "coins", value: 200, label: "200 AVD coins" },
         { type: "coins", value: 50, label: "50 AVD coins" },
         { type: "none", value: 0, label: "Try Again" },
-        { type: "coins", value: 150, label: "150 AVIDERS" },
+        { type: "coins", value: 150, label: "150 AVD coins" },
         { type: "coupon", code: "AVIDERS100", label: "Premium Coupon" },
-        { type: "coins", value: 300, label: "300 AVIDERS" },
+        { type: "coins", value: 300, label: "300 AVD coins" },
         { type: "none", value: 0, label: "Better Luck" }
       ]
     });
