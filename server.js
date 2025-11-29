@@ -1,7 +1,5 @@
 const express = require("express");
 const cors = require("cors");
-const mongoose = require("mongoose");
-require("dotenv").config();
 
 const app = express();
 
@@ -9,7 +7,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Request logging middleware
+// Request logging
 app.use((req, res, next) => {
   console.log(`📨 ${req.method} ${req.path}`, req.body || '');
   next();
@@ -19,54 +17,29 @@ app.use((req, res, next) => {
 app.get("/health", (req, res) => {
   res.json({ 
     success: true, 
-    message: "Server is running", 
-    timestamp: new Date().toISOString(),
-    database: mongoose.connection.readyState === 1 ? "Connected" : "Disconnected"
+    message: "Server is running in emergency mode", 
+    timestamp: new Date().toISOString()
   });
 });
 
-// MongoDB User Schema
-const userSchema = new mongoose.Schema({
-  uid: { type: String, required: true, unique: true },
-  freeSpins: { type: Number, default: 1 },
-  bonusSpins: { type: Number, default: 0 },
-  walletCoins: { type: Number, default: 100 },
-  lastSpin: { type: Date, default: null },
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
+// Simple in-memory storage (replace with MongoDB later)
+const users = new Map();
 
-const User = mongoose.model('SpinUser', userSchema);
-
-// Connect to MongoDB
-const connectDB = async () => {
-  try {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/spinwheel');
-    console.log('✅ MongoDB Connected');
-  } catch (error) {
-    console.error('❌ MongoDB connection failed:', error.message);
-  }
-};
-
-connectDB();
-
-// Ensure user exists in database
-const ensureUser = async (uid) => {
-  let user = await User.findOne({ uid });
-  if (!user) {
-    user = await User.create({ 
-      uid, 
-      freeSpins: 1, 
-      bonusSpins: 0, 
-      walletCoins: 100 
+const ensureUser = (uid) => {
+  if (!users.has(uid)) {
+    users.set(uid, {
+      freeSpins: 1,
+      bonusSpins: 0,
+      walletCoins: 100,
+      lastSpin: null
     });
     console.log(`👤 New user created: ${uid}`);
   }
-  return user;
+  return users.get(uid);
 };
 
 // SPIN API ENDPOINTS
-app.post("/api/spin/status", async (req, res) => {
+app.post("/api/spin/status", (req, res) => {
   try {
     const { uid } = req.body;
     console.log(`🔎 STATUS requested for UID: ${uid}`);
@@ -75,7 +48,7 @@ app.post("/api/spin/status", async (req, res) => {
       return res.json({ success: false, message: "UID is required" });
     }
 
-    const user = await ensureUser(uid);
+    const user = ensureUser(uid);
     
     res.json({
       success: true,
@@ -99,7 +72,7 @@ app.post("/api/spin/status", async (req, res) => {
   }
 });
 
-app.post("/api/spin/bonus", async (req, res) => {
+app.post("/api/spin/bonus", (req, res) => {
   try {
     const { uid } = req.body;
     console.log(`➕ BONUS requested for UID: ${uid}`);
@@ -108,11 +81,8 @@ app.post("/api/spin/bonus", async (req, res) => {
       return res.json({ success: false, message: "UID is required" });
     }
 
-    const user = await User.findOneAndUpdate(
-      { uid },
-      { $inc: { bonusSpins: 1 }, $set: { updatedAt: new Date() } },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
-    );
+    const user = ensureUser(uid);
+    user.bonusSpins += 1;
 
     console.log(`✅ Bonus spin added for ${uid}. Total: ${user.bonusSpins}`);
     
@@ -127,7 +97,7 @@ app.post("/api/spin/bonus", async (req, res) => {
   }
 });
 
-app.post("/api/spin/spin", async (req, res) => {
+app.post("/api/spin/spin", (req, res) => {
   try {
     const { uid } = req.body;
     console.log(`🎰 SPIN requested for UID: ${uid}`);
@@ -136,7 +106,7 @@ app.post("/api/spin/spin", async (req, res) => {
       return res.json({ success: false, message: "UID is required" });
     }
 
-    const user = await ensureUser(uid);
+    const user = ensureUser(uid);
     
     // Check if user has spins
     if (user.freeSpins <= 0 && user.bonusSpins <= 0) {
@@ -145,17 +115,15 @@ app.post("/api/spin/spin", async (req, res) => {
 
     // Use free spin first, then bonus spins
     let freeSpinUsed = false;
-    let updateQuery = { 
-      $set: { updatedAt: new Date(), lastSpin: new Date() },
-      $inc: {}
-    };
     
     if (user.freeSpins > 0) {
-      updateQuery.$inc.freeSpins = -1;
+      user.freeSpins -= 1;
       freeSpinUsed = true;
     } else {
-      updateQuery.$inc.bonusSpins = -1;
+      user.bonusSpins -= 1;
     }
+
+    user.lastSpin = new Date();
 
     // Generate reward
     const rewards = [
@@ -174,24 +142,18 @@ app.post("/api/spin/spin", async (req, res) => {
     
     // Update wallet if coins reward
     if (reward.type === "coins") {
-      updateQuery.$inc.walletCoins = reward.value;
+      user.walletCoins += reward.value;
     }
 
-    const updatedUser = await User.findOneAndUpdate(
-      { uid },
-      updateQuery,
-      { new: true }
-    );
-
-    console.log(`✅ Spin completed for ${uid}. Reward: ${reward.label}, Coins: ${updatedUser.walletCoins}, Free Spins: ${updatedUser.freeSpins}, Bonus Spins: ${updatedUser.bonusSpins}`);
+    console.log(`✅ Spin completed for ${uid}. Reward: ${reward.label}, Coins: ${user.walletCoins}, Free Spins: ${user.freeSpins}, Bonus Spins: ${user.bonusSpins}`);
     
     res.json({
       success: true,
       sector: reward.sector,
       reward: reward,
       free_spin_used_today: freeSpinUsed,
-      bonus_spins: updatedUser.bonusSpins,
-      wallet_coins: updatedUser.walletCoins,
+      bonus_spins: user.bonusSpins,
+      wallet_coins: user.walletCoins,
       message: `You won: ${reward.label}`
     });
   } catch (error) {
@@ -200,42 +162,10 @@ app.post("/api/spin/spin", async (req, res) => {
   }
 });
 
-// Add a reset endpoint for testing
-app.post("/api/spin/reset", async (req, res) => {
-  try {
-    const { uid } = req.body;
-    if (!uid) {
-      return res.json({ success: false, message: "UID is required" });
-    }
-
-    const user = await User.findOneAndUpdate(
-      { uid },
-      { 
-        freeSpins: 1, 
-        bonusSpins: 0, 
-        walletCoins: 100,
-        updatedAt: new Date()
-      },
-      { new: true, upsert: true }
-    );
-
-    console.log(`🔄 User ${uid} reset. Free spins: ${user.freeSpins}, Coins: ${user.walletCoins}`);
-    
-    res.json({
-      success: true,
-      free_spin_available: user.freeSpins > 0,
-      bonus_spins: user.bonusSpins,
-      wallet_coins: user.walletCoins,
-      message: "User data reset successfully"
-    });
-  } catch (error) {
-    console.error('❌ Reset error:', error);
-    res.status(500).json({ success: false, message: "Server error" });
-  }
-});
-
 const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`✅ MongoDB will track all user balances and spins`);
+  console.log(`🚀 Server running on port ${PORT} (Emergency Mode)`);
+  console.log(`✅ No MongoDB required - using in-memory storage`);
+  console.log(`✅ Health check: http://localhost:${PORT}/health`);
 });
