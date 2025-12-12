@@ -384,7 +384,7 @@ app.post("/api/spin/spin", validateSpinRequest, async (req, res) => {
       success: true,
       sector: reward.sector,
       reward: reward,
-      free_spin_used_today: freeSpinUsed,
+      free_spin_available: user.freeSpins > 0,
       bonus_spins: user.bonusSpins,
       wallet_coins: user.walletCoins,
       message: `You won: ${reward.label}`
