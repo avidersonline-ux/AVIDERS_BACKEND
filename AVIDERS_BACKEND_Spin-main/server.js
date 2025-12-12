@@ -10,6 +10,30 @@ const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const Joi = require('joi');
 
+// Firebase Admin SDK for FCM
+let admin;
+try {
+  admin = require('firebase-admin');
+  
+  // Try to initialize Firebase Admin if not already initialized
+  if (!admin.apps.length) {
+    const serviceAccountPath = path.join(__dirname, 'middleware', 'serviceAccount.json');
+    if (fs.existsSync(serviceAccountPath)) {
+      const serviceAccount = require(serviceAccountPath);
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log("✅ Firebase Admin SDK initialized successfully");
+    } else {
+      console.log("⚠️  Firebase Admin: serviceAccount.json not found, FCM notifications disabled");
+      admin = null;
+    }
+  }
+} catch (error) {
+  console.log("⚠️  Firebase Admin SDK not available, FCM notifications disabled:", error.message);
+  admin = null;
+}
+
 const app = express();
 
 // =====================
@@ -512,6 +536,116 @@ app.get("/api/spin/admin/users", async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Admin users error:', error);
+    res.status(500).json({ success: false, message: "Server error: " + error.message });
+  }
+});
+
+// ADMIN endpoint - Reset daily free spins
+app.post("/api/spin/admin/reset-daily", async (req, res) => {
+  try {
+    // Internal authentication
+    const internalKey = req.headers['x-internal-key'];
+    if (!internalKey || internalKey !== process.env.SPIN_INTERNAL_KEY) {
+      return res.status(403).json({ success: false, message: "Internal access denied" });
+    }
+
+    // Compute 24-hour cutoff
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    console.log(`🔄 Resetting daily spins for users inactive since: ${cutoff.toISOString()}`);
+
+    // Update users who haven't spun in 24h or never spun
+    const result = await User.updateMany(
+      {
+        $or: [
+          { lastSpin: null },
+          { lastSpin: { $lt: cutoff } }
+        ]
+      },
+      {
+        $set: { freeSpins: 1 }
+      }
+    );
+
+    console.log(`✅ Daily reset completed: ${result.modifiedCount} users updated`);
+
+    res.json({
+      success: true,
+      message: "Daily free spins reset completed",
+      updated_count: result.modifiedCount,
+      matched_count: result.matchedCount
+    });
+  } catch (error) {
+    console.error('❌ Reset daily error:', error);
+    res.status(500).json({ success: false, message: "Server error: " + error.message });
+  }
+});
+
+// ADMIN endpoint - Send FCM notifications to eligible users
+app.post("/api/spin/admin/run-notify", async (req, res) => {
+  try {
+    // Internal authentication
+    const internalKey = req.headers['x-internal-key'];
+    if (!internalKey || internalKey !== process.env.SPIN_INTERNAL_KEY) {
+      return res.status(403).json({ success: false, message: "Internal access denied" });
+    }
+
+    // Check if Firebase Admin is available
+    if (!admin) {
+      return res.status(503).json({ 
+        success: false, 
+        message: "FCM not configured - Firebase Admin SDK not initialized" 
+      });
+    }
+
+    // Find users with free spins and FCM tokens
+    const users = await User.find({
+      freeSpins: { $gt: 0 },
+      fcm_tokens: { $exists: true, $not: { $size: 0 } }
+    });
+
+    console.log(`📱 Found ${users.length} users eligible for FCM notifications`);
+
+    let notifiedCount = 0;
+    let failedCount = 0;
+
+    // FCM payload
+    const payload = {
+      notification: {
+        title: "🎰 Your Free Spin is Ready!",
+        body: "Come back and spin the wheel to win amazing rewards!",
+        sound: "default"
+      },
+      data: {
+        type: "daily_spin_reminder",
+        screen: "spin_wheel"
+      }
+    };
+
+    // Send notifications to each user
+    for (const user of users) {
+      if (user.fcm_tokens && user.fcm_tokens.length > 0) {
+        try {
+          await admin.messaging().sendToDevice(user.fcm_tokens, payload);
+          notifiedCount++;
+          console.log(`✅ Notification sent to user: ${user.uid}`);
+        } catch (error) {
+          failedCount++;
+          console.error(`❌ Failed to notify user ${user.uid}:`, error.message);
+        }
+      }
+    }
+
+    console.log(`📊 Notification summary: ${notifiedCount} sent, ${failedCount} failed`);
+
+    res.json({
+      success: true,
+      message: "FCM notifications sent",
+      total_eligible: users.length,
+      notified_count: notifiedCount,
+      failed_count: failedCount
+    });
+  } catch (error) {
+    console.error('❌ Run notify error:', error);
     res.status(500).json({ success: false, message: "Server error: " + error.message });
   }
 });
