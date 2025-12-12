@@ -1,230 +1,109 @@
+// modules/spinwheel-service/controllers/spin.controller.js
 const mongoose = require('mongoose');
 const SpinUser = require("../models/SpinUser");
 const SpinHistory = require("../models/SpinHistory");
 const Wallet = require("../models/wallet.model");
-const rewardEngine = require("../engine/rewardEngine");
+const spinService = require("../services/spin.service");
+const admin = require('firebase-admin'); // ensure firebase-admin init in server.js or similar
 
-// Check if database is connected
 const isDbConnected = () => mongoose.connection.readyState === 1;
 
 const spinController = {
-  // Get user status
   async getStatus(req, res) {
     try {
-      const { uid } = req.body;
-      
-      if (!uid) {
-        return res.status(400).json({
-          success: false,
-          message: "UID is required"
-        });
-      }
-
-      // If DB is not connected, return mock data
-      if (!isDbConnected()) {
-        console.log("🔄 Using mock data - DB not connected");
-        const rewards = await rewardEngine.getAvailableRewards();
-        
-        return res.json({
-          success: true,
-          free_spin_available: true,
-          bonus_spins: 1,
-          wallet_coins: 100,
-          rewards: rewards,
-          message: "Using mock data - DB offline"
-        });
-      }
-
-      // Get or create user
-      let user = await SpinUser.findOne({ uid });
-      
-      if (!user) {
-        user = await SpinUser.create({
-          uid,
-          free_spin_available: true,
-          bonus_spins: 0,
-          last_free_spin: null
-        });
-        
-        // Create wallet if doesn't exist
-        await Wallet.findOneAndUpdate(
-          { uid },
-          { $setOnInsert: { coins: 0 } },
-          { upsert: true, new: true }
-        );
-      }
-
-      // Get wallet
-      const wallet = await Wallet.findOne({ uid });
-      
-      // Get available rewards
-      const rewards = await rewardEngine.getAvailableRewards();
-
-      res.json({
-        success: true,
-        free_spin_available: user.free_spin_available,
-        bonus_spins: user.bonus_spins,
-        wallet_coins: wallet ? wallet.coins : 0,
-        rewards: rewards
-      });
-
-    } catch (error) {
-      console.error("❌ getStatus error:", error);
-      // Fallback to mock data on error
-      const rewards = await rewardEngine.getAvailableRewards();
-      res.json({
-        success: true,
-        free_spin_available: true,
-        bonus_spins: 1,
-        wallet_coins: 100,
-        rewards: rewards,
-        message: "Fallback mode - error occurred"
-      });
+      const uid = (req.user && req.user.uid) || req.body.uid;
+      if (!uid) return res.status(400).json({ success:false, message:'uid required' });
+      const status = await spinService.getStatus(uid);
+      return res.json({ success:true, ...status });
+    } catch (err) {
+      return res.status(500).json({ success:false, message: err.message });
     }
   },
 
-  // Add bonus spin
-  async addBonusSpin(req, res) {
+  async performSpin(req, res) {
     try {
-      const { uid } = req.body;
+      const uid = (req.user && req.user.uid) || req.body.uid;
+      const spinType = req.body.spinType || 'free';
+      if (!uid) return res.status(400).json({ success:false, message:'uid required' });
 
-      if (!isDbConnected()) {
-        return res.json({
-          success: true,
-          bonus_spins_left: 2,
-          message: "Bonus spin added (offline mode)"
-        });
-      }
-
-      const user = await SpinUser.findOneAndUpdate(
-        { uid },
-        { $inc: { bonus_spins: 1 } },
-        { new: true, upsert: true }
-      );
-
-      res.json({
-        success: true,
-        bonus_spins_left: user.bonus_spins,
-        message: "Bonus spin added!"
-      });
-
-    } catch (error) {
-      console.error("❌ addBonusSpin error:", error);
-      res.json({
-        success: true,
-        bonus_spins_left: 2,
-        message: "Bonus spin added (fallback)"
-      });
+      const result = await spinService.performSpin(uid, spinType);
+      return res.json({ success:true, reward: result.reward });
+    } catch (err) {
+      return res.status(400).json({ success:false, message: err.message || 'Spin error' });
     }
   },
 
-  // Spin the wheel
-  async spinWheel(req, res) {
+  // ledger: wallet + recent history
+  async getLedger(req, res) {
     try {
-      const { uid } = req.body;
+      const uid = (req.user && req.user.uid) || req.body.uid;
+      if (!uid) return res.status(400).json({ success:false, message:'uid required' });
+      const wallet = await Wallet.findOne({ uid }) || { coins: 0 };
+      const history = await SpinHistory.find({ uid }).sort({ timestamp: -1 }).limit(100);
+      return res.json({ success:true, wallet_coins: wallet.coins, history });
+    } catch (err) {
+      return res.status(500).json({ success:false, message: err.message });
+    }
+  },
 
-      // If DB not connected, use mock spin
-      if (!isDbConnected()) {
-        console.log("🔄 Using mock spin - DB not connected");
-        const rewards = await rewardEngine.getAvailableRewards();
-        const randomIndex = Math.floor(Math.random() * rewards.length);
-        const reward = { ...rewards[randomIndex], sector: randomIndex };
-        
-        if (reward.type === "coupon" && !reward.code) {
-          reward.code = "SPIN" + Math.random().toString(36).substring(2, 8).toUpperCase();
+  // Admin-only reset endpoint (protect with x-internal-key or admin auth)
+  async adminResetDaily(req, res) {
+    try {
+      // simple internal key check
+      const key = req.headers['x-internal-key'];
+      if (!key || key !== process.env.SPIN_INTERNAL_KEY) {
+        return res.status(401).json({ success:false, message:'Unauthorized' });
+      }
+      const result = await spinService.runDailyReset();
+      return res.json({ success:true, result });
+    } catch (err) {
+      return res.status(500).json({ success:false, message: err.message });
+    }
+  },
+
+  async registerToken(req, res) {
+    try {
+      const uid = (req.user && req.user.uid) || req.body.uid;
+      const token = req.body.token;
+      if (!uid || !token) return res.status(400).json({ success:false, message:'uid and token required' });
+      await spinService.registerFcmToken(uid, token);
+      return res.json({ success:true });
+    } catch (err) {
+      return res.status(500).json({ success:false, message: err.message });
+    }
+  },
+
+  // Run notification (protected by internal key)
+  async runNotify(req, res) {
+    try {
+      const key = req.headers['x-internal-key'];
+      if (!key || key !== process.env.SPIN_INTERNAL_KEY) {
+        return res.status(401).json({ success:false, message:'Unauthorized' });
+      }
+
+      // Ensure firebase-admin is initialized in server.js
+      if (!admin.apps.length) {
+        return res.status(500).json({ success:false, message:'Firebase admin not initialized' });
+      }
+
+      const users = await spinService.getUsersToNotify();
+      let sent = 0;
+      for (const u of users) {
+        if (!u.fcm_tokens || u.fcm_tokens.length === 0) continue;
+        const payload = {
+          notification: { title: 'Your free spin is ready!', body: 'Tap to open Aviders and spin the wheel.' },
+          data: { screen: 'spin' }
+        };
+        try {
+          const resp = await admin.messaging().sendToDevice(u.fcm_tokens, payload);
+          sent++;
+        } catch (e) {
+          console.warn('fcm send failed', e.message || e);
         }
-        
-        return res.json({
-          success: true,
-          sector: reward.sector,
-          reward: reward,
-          free_spin_used_today: false,
-          bonus_spins_left: 1,
-          wallet_coins: 100 + (reward.value || 0),
-          message: `You won: ${reward.label} (offline mode)`
-        });
       }
-
-      // Get user
-      let user = await SpinUser.findOne({ uid });
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: "User not found"
-        });
-      }
-
-      // Check if user can spin
-      if (!user.free_spin_available && user.bonus_spins <= 0) {
-        return res.status(400).json({
-          success: false,
-          message: "No spins available"
-        });
-      }
-
-      // Use free spin first, then bonus spins
-      let free_spin_used_today = false;
-      if (user.free_spin_available) {
-        user.free_spin_available = false;
-        user.last_free_spin = new Date();
-        free_spin_used_today = true;
-      } else {
-        user.bonus_spins -= 1;
-      }
-
-      await user.save();
-
-      // Generate reward
-      const reward = await rewardEngine.generateReward(uid);
-      
-      // Update wallet if coins reward
-      if (reward.type === "coins") {
-        await Wallet.findOneAndUpdate(
-          { uid },
-          { $inc: { coins: reward.value } },
-          { upsert: true, new: true }
-        );
-      }
-
-      // Record spin history
-      await SpinHistory.create({
-        uid,
-        reward_type: reward.type,
-        reward_value: reward.value,
-        reward_code: reward.code,
-        reward_label: reward.label,
-        timestamp: new Date()
-      });
-
-      // Get updated wallet
-      const wallet = await Wallet.findOne({ uid });
-
-      res.json({
-        success: true,
-        sector: reward.sector,
-        reward: reward,
-        free_spin_used_today: free_spin_used_today,
-        bonus_spins_left: user.bonus_spins,
-        wallet_coins: wallet ? wallet.coins : 0,
-        message: `You won: ${reward.label}`
-      });
-
-    } catch (error) {
-      console.error("❌ spinWheel error:", error);
-      // Fallback to mock spin
-      const rewards = await rewardEngine.getAvailableRewards();
-      const randomIndex = Math.floor(Math.random() * rewards.length);
-      const reward = { ...rewards[randomIndex], sector: randomIndex };
-      
-      res.json({
-        success: true,
-        sector: reward.sector,
-        reward: reward,
-        free_spin_used_today: false,
-        bonus_spins_left: 1,
-        wallet_coins: 100,
-        message: `You won: ${reward.label} (fallback mode)`
-      });
+      return res.json({ success:true, notified: sent });
+    } catch (err) {
+      return res.status(500).json({ success:false, message: err.message });
     }
   }
 };
