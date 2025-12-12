@@ -743,6 +743,7 @@ app.listen(PORT, () => {
   console.log(`✅ CORS enabled for: ${allowedOrigins.join(', ')}`);
   console.log(`🎯 Rewards configuration: ${rewardsConfig.length} rewards loaded`);
   console.log(`🛡️ Security: Helmet, Rate Limiting, Compression enabled`);
+  console.log(`📱 FCM Admin Endpoints: /api/spin/admin/reset-daily, /api/spin/admin/run-notify`);
   
   // Better connection status check
   const dbStatus = mongoose.connection.readyState === 1 ? "Connected" : "Disconnected";
